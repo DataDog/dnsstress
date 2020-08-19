@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"sync/atomic"
+	"time"
 )
 
 var (
@@ -29,7 +30,7 @@ var (
 func init() {
 	flag.IntVar(&concurrency, "concurrency", 50,
 		"Internal buffer")
-	flag.IntVar(&maxMessages, "m", 10000,
+	flag.IntVar(&maxMessages, "m", 100000,
 		"Maximum number of messages to send before stopping. Can be overriden to never stop with -inf")
 	flag.BoolVar(&verbose, "v", false,
 		"Verbose logging")
@@ -106,8 +107,9 @@ func main() {
 			return
 		default:
 			if int64(maxMessages) < atomic.LoadInt64(&dnsResolver.totalSent) && !runForever {
+				// Ensure all stats are updated/flushed
+				time.Sleep(2 * time.Second)
 				fmt.Println("Sent %d messages, and %d bytes", atomic.LoadInt64(&dnsResolver.totalSent), dnsResolver.totalBytesSent)
-				close(exit)
 				return
 			}
 			continue
