@@ -1,7 +1,6 @@
 package main
 
 import (
-	"crypto/rand"
 	"fmt"
 	"github.com/DataDog/datadog-go/statsd"
 	"github.com/miekg/dns"
@@ -25,15 +24,14 @@ type Resolver struct {
 
 	concurrency    int
 	server         string
+	domain 		   string
 	stopChan       chan struct{}
-	message        *dns.Msg
 	statsdReporter *statsd.Client
 
 	flood bool
 }
 
 func NewResolver(server string, domain string, concurrency int, flood bool, client *statsd.Client, exit chan struct{}) *Resolver {
-	msg := new(dns.Msg).SetQuestion(domain, dns.TypeA)
 
 	r := &Resolver{
 		server:         server,
@@ -47,7 +45,7 @@ func NewResolver(server string, domain string, concurrency int, flood bool, clie
 		concurrency:    concurrency,
 		statsdReporter: client,
 		stopChan:       exit,
-		message:        msg,
+		domain:        domain,
 	}
 
 	go r.statsTimer(r.stopChan)
@@ -79,7 +77,6 @@ func (r *Resolver) resolve(exit <-chan struct{}) {
 				wg.Wait()
 			} else {
 				r.exchange()
-				r.updateMessageID()
 			}
 		}
 	}
@@ -92,24 +89,20 @@ func (r *Resolver) waitExchange(wg *sync.WaitGroup) error {
 }
 
 func (r *Resolver) exchange() error {
+	msg := new(dns.Msg).SetQuestion(r.domain, dns.TypeA)
 	udpConn, err := dns.Dial("udp", r.server)
 	if err != nil {
 		return err
 	}
 	defer udpConn.Close()
-	err = udpConn.WriteMsg(r.message)
+	err = udpConn.WriteMsg(msg)
 	if err != nil {
 		fmt.Println(err)
 	}
 
 	atomic.AddInt64(&r.sent, 1)
-	atomic.AddInt64(&r.bytesSent, int64(r.message.Len()))
+	atomic.AddInt64(&r.bytesSent, int64(msg.Len()))
 	return nil
-}
-
-func (r *Resolver) updateMessageID() {
-	newid, _ := rand.Int(rand.Reader, MaxRequestID)
-	r.message.Id = uint16(newid.Int64())
 }
 
 func (r *Resolver) statsTimer(exit <-chan struct{}) {
@@ -132,9 +125,6 @@ func (r *Resolver) submitStats() {
 	sent := atomic.SwapInt64(&r.sent, 0)
 	errors := atomic.SwapInt64(&r.errors, 0)
 	bytesSent := atomic.SwapInt64(&r.bytesSent, 0)
-
-	fmt.Println(sent)
-	fmt.Println(r.totalSent)
 
 	// Submit stats
 	err := r.statsdReporter.Count("npm.udp.testing.sent_packets", sent, nil, 1)
