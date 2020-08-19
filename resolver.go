@@ -98,6 +98,7 @@ func (r *Resolver) exchange() error {
 	err = udpConn.WriteMsg(msg)
 	if err != nil {
 		fmt.Println(err)
+		return err
 	}
 
 	atomic.AddInt64(&r.sent, 1)
