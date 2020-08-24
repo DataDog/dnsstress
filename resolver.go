@@ -102,7 +102,9 @@ func (r *Resolver) exchange() error {
 	}
 
 	atomic.AddInt64(&r.sent, 1)
-	atomic.AddInt64(&r.bytesSent, int64(msg.Len()))
+	// msg.Len() includes a UDP header with a length of 12. This is not included
+	// in NPM stat calculations, so remove it.
+	atomic.AddInt64(&r.bytesSent, int64(msg.Len() - 12))
 	return nil
 }
 
@@ -126,6 +128,11 @@ func (r *Resolver) submitStats() {
 	sent := atomic.SwapInt64(&r.sent, 0)
 	errors := atomic.SwapInt64(&r.errors, 0)
 	bytesSent := atomic.SwapInt64(&r.bytesSent, 0)
+
+	t := time.Now()
+	fmt.Println(t.Format(time.Stamp))
+	fmt.Println(sent)
+	fmt.Println(r.totalSent)
 
 	// Submit stats
 	err := r.statsdReporter.Count("npm.udp.testing.sent_packets", sent, nil, 1)
