@@ -28,6 +28,8 @@ Then:
     -r string   Resolver to test against (default "127.0.0.1:53")
     -random     Use random Request Identifiers for each query
     -v          Verbose logging
+    -m          Number of messages to send before stopping (defaults to 1000000)
+    -inf        Ignore max number of messages and send infinitely
 
 For IPv6 resolvers, use brackets and quotes:
 
