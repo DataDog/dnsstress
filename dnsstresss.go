@@ -4,7 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"github.com/DataDog/datadog-go/statsd"
-	"github.com/logrusorgru/aurora"
 	"log"
 	"os"
 	"strings"
@@ -16,15 +15,25 @@ var (
 	concurrency   int
 	flushInterval int
 	maxMessages   int
+	maxWorkers    int
 	verbose       bool
 	iterative     bool
 	resolver      string
 	randomIds     bool
 	flood         bool
 	runForever    bool
-	au            aurora.Aurora
 	DatadogStatsd *statsd.Client
+	// A buffered channel that we can send work requests on.
+	JobQueue chan Job
+	StatsQueue chan statsMessage
 
+	sent      int64
+	errors    int64
+	bytesSent int64
+
+	totalSent      int64
+	totalErrors    int64
+	totalBytesSent int64
 )
 
 func init() {
@@ -32,6 +41,8 @@ func init() {
 		"Internal buffer")
 	flag.IntVar(&maxMessages, "m", 100000,
 		"Maximum number of messages to send before stopping. Can be overriden to never stop with -inf")
+	flag.IntVar(&maxWorkers, "maxWorkers", 25,
+		"Maximum number of workers to handle requests")
 	flag.BoolVar(&verbose, "v", false,
 		"Verbose logging")
 	flag.BoolVar(&randomIds, "random", false,
@@ -76,7 +87,6 @@ func main() {
 		flag.Usage()
 		os.Exit(1)
 	}
-	au = aurora.NewAurora(true)
 
 	if !strings.Contains(resolver, ":") { // TODO: improve this test to make it work with IPv6 addresses
 		// Automatically append the default port number if missing
@@ -97,8 +107,25 @@ func main() {
 
 	exit :=  make(chan struct{})
 	dnsResolver := NewResolver(resolver, targetDomains[0], concurrency, flood, DatadogStatsd, exit)
+	eventMessage := fmt.Sprintf("Started DNS Stress Test with flood: %t, concurrency: %d. TargetDomains: %s Resolver: %s", flood, concurrency, targetDomains, resolver)
+	e := statsd.Event{
+		Title:          "DNS Stress Test Start",
+		Text:           eventMessage,
+		Timestamp:      time.Time{},
+	}
+	DatadogStatsd.Event(&e)
 	dnsResolver.RunResolver()
 	defer dnsResolver.Close()
+
+	/*JobQueue = make(chan Job, maxWorkers)
+	quit := make(chan bool)
+	stats := newStatsRecorder(quit)
+	defer close(quit)
+	go requestGenerator(targetDomains[0])
+	dispatcher := NewRequestDispatcher(maxWorkers)
+	dispatcher.Run(stats.statsMessageChan)
+	time.Sleep(time.Hour)
+*/
 
 	for {
 		select {
@@ -114,6 +141,30 @@ func main() {
 			}
 			continue
 		}
+	}
+
+	eventMessage = fmt.Sprintf("Stopped DNS Stress Test with flood: %t, concurrency: %d. TargetDomains: %s Resolver: %s", flood, concurrency, targetDomains, resolver)
+
+	DatadogStatsd.Event(&statsd.Event{
+		Title:          "DNS Stress Test Stop",
+		Text:           eventMessage,
+		Timestamp:      time.Time{},
+	})
+
+}
+
+func requestGenerator(targetDomain string) {
+	// Go through each payload and queue items individually to be posted to S3
+	for i:=0; i < maxMessages; i++ {
+
+		// let's create a job with the request
+		work := Job{request: Request{
+			server:      resolver,
+			domain:      targetDomain,
+		}}
+
+		// Push the work onto the queue.
+		JobQueue <- work
 	}
 }
 

@@ -12,7 +12,6 @@ import (
 
 var MaxRequestID = big.NewInt(65536)
 
-//TODO: Add function to test if resolver is working
 type Resolver struct {
 	sent      int64
 	errors    int64
@@ -102,9 +101,7 @@ func (r *Resolver) exchange() error {
 	}
 
 	atomic.AddInt64(&r.sent, 1)
-	// msg.Len() includes a UDP header with a length of 12. This is not included
-	// in NPM stat calculations, so remove it.
-	atomic.AddInt64(&r.bytesSent, int64(msg.Len() - 12))
+	atomic.AddInt64(&r.bytesSent, int64(msg.Len()))
 	return nil
 }
 
