@@ -19,6 +19,7 @@ var (
 	maxMessages int
 	resolver    string
 	runForever  bool
+	reqPerSec   int
 )
 
 func init() {
@@ -26,6 +27,8 @@ func init() {
 		"Number of concurrent goroutines used for sending")
 	flag.IntVar(&maxMessages, "m", 100000,
 		"Maximum number of messages to send before stopping. Can be overridden to never stop with -inf")
+	flag.IntVar(&reqPerSec, "t", 0,
+		"Target request rate per second, defaults to unlimited")
 	flag.StringVar(&resolver, "r", "127.0.0.1:53",
 		"Resolver to test against")
 	flag.BoolVar(&runForever, "inf", false,
@@ -84,8 +87,9 @@ func main() {
 		maxMessages = math.MaxInt64
 	}
 	dnsResolver := NewResolver(resolver, targetDomains[0], sdClient, ResolverOptions{
-		Concurrency: concurrency,
-		MaxMessages: maxMessages,
+		Concurrency:       concurrency,
+		MaxMessages:       maxMessages,
+		RequestsPerSecond: reqPerSec,
 	})
 
 	go func() {

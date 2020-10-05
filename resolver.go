@@ -13,8 +13,9 @@ import (
 )
 
 type ResolverOptions struct {
-	Concurrency int
-	MaxMessages int
+	Concurrency       int
+	MaxMessages       int
+	RequestsPerSecond int
 }
 
 //TODO: Add function to test if resolver is working
@@ -29,9 +30,11 @@ type Resolver struct {
 
 	concurrency    int
 	maxMessages    int
+	rps            int
 	server         string
 	domain         string
 	stopChan       chan struct{}
+	feedChan       chan struct{}
 	statsdReporter *statsd.Client
 
 	stopOnce sync.Once
@@ -44,7 +47,9 @@ func NewResolver(server string, domain string, client *statsd.Client, opts Resol
 		server:         server,
 		concurrency:    opts.Concurrency,
 		maxMessages:    opts.MaxMessages,
+		rps:            opts.RequestsPerSecond,
 		statsdReporter: client,
+		feedChan:       make(chan struct{}),
 		stopChan:       make(chan struct{}),
 		domain:         domain,
 	}
@@ -66,18 +71,53 @@ func (r *Resolver) RunResolver() {
 		fmt.Printf("sending %d messages\n", r.maxMessages)
 	}
 
+	if r.rps > 0 {
+		timePerReq := (1 * time.Second) / time.Duration(r.rps)
+		go r.feed(timePerReq)
+	}
+
 	for i := 0; i < r.concurrency; i++ {
 		r.wg.Add(1)
-		go r.resolve(r.stopChan)
+
+		if r.rps > 0 {
+			go r.consume()
+		} else {
+			go r.resolve()
+		}
 	}
 	r.wg.Wait()
 }
 
-func (r *Resolver) resolve(stop <-chan struct{}) {
+func (r *Resolver) feed(dur time.Duration) {
+	ticker := time.NewTicker(dur)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-r.stopChan:
+			close(r.feedChan)
+			return
+		case <-ticker.C:
+			r.feedChan <- struct{}{}
+		}
+	}
+}
+
+func (r *Resolver) consume() {
+	defer r.wg.Done()
+	for range r.feedChan {
+		err := r.exchange()
+		if err != nil {
+			fmt.Fprint(os.Stderr, err)
+		}
+	}
+}
+
+func (r *Resolver) resolve() {
 	defer r.wg.Done()
 	for {
 		select {
-		case <-stop:
+		case <-r.stopChan:
 			return
 		default:
 			err := r.exchange()
