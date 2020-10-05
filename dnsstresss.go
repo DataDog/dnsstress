@@ -3,18 +3,17 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/DataDog/datadog-go/statsd"
-	"github.com/logrusorgru/aurora"
 	"log"
 	"os"
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/DataDog/datadog-go/statsd"
 )
 
 var (
 	concurrency   int
-	flushInterval int
 	maxMessages   int
 	verbose       bool
 	iterative     bool
@@ -22,9 +21,7 @@ var (
 	randomIds     bool
 	flood         bool
 	runForever    bool
-	au            aurora.Aurora
 	DatadogStatsd *statsd.Client
-
 )
 
 func init() {
@@ -47,7 +44,7 @@ func init() {
 	DatadogStatsd = InitApp()
 }
 
-func InitApp() *statsd.Client{
+func InitApp() *statsd.Client {
 	statsd, err := statsd.New("127.0.0.1:8125")
 	if err != nil {
 		log.Fatal(err)
@@ -57,13 +54,13 @@ func InitApp() *statsd.Client{
 }
 
 func main() {
-	fmt.Printf("dnsstresss - dns stress tool\n\n")
+	fmt.Printf("dnsstress - dns stress tool\n\n")
 
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, strings.Join([]string{
+		fmt.Fprint(os.Stderr, strings.Join([]string{
 			"Send DNS requests as fast as possible to a given server and display the rate.",
 			"",
-			"Usage: dnsstresss [option ...] targetdomain [targetdomain [...] ]",
+			"Usage: dnsstress [option ...] targetdomain [targetdomain [...] ]",
 			"",
 		}, "\n"))
 		flag.PrintDefaults()
@@ -76,7 +73,6 @@ func main() {
 		flag.Usage()
 		os.Exit(1)
 	}
-	au = aurora.NewAurora(true)
 
 	if !strings.Contains(resolver, ":") { // TODO: improve this test to make it work with IPv6 addresses
 		// Automatically append the default port number if missing
@@ -95,7 +91,7 @@ func main() {
 
 	fmt.Printf("Target domains: %v.\n", targetDomains)
 
-	exit :=  make(chan struct{})
+	exit := make(chan struct{})
 	dnsResolver := NewResolver(resolver, targetDomains[0], concurrency, flood, DatadogStatsd, exit)
 	dnsResolver.RunResolver()
 	defer dnsResolver.Close()
@@ -109,11 +105,10 @@ func main() {
 			if int64(maxMessages) < atomic.LoadInt64(&dnsResolver.totalSent) && !runForever {
 				// Ensure all stats are updated/flushed
 				time.Sleep(2 * time.Second)
-				fmt.Println("Sent %d messages, and %d bytes", atomic.LoadInt64(&dnsResolver.totalSent), dnsResolver.totalBytesSent)
+				fmt.Printf("Sent %d messages, and %d bytes\n", atomic.LoadInt64(&dnsResolver.totalSent), dnsResolver.totalBytesSent)
 				return
 			}
 			continue
 		}
 	}
 }
-

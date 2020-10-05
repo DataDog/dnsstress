@@ -2,15 +2,14 @@ package main
 
 import (
 	"fmt"
-	"github.com/DataDog/datadog-go/statsd"
-	"github.com/miekg/dns"
-	"math/big"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
-)
 
-var MaxRequestID = big.NewInt(65536)
+	"github.com/DataDog/datadog-go/statsd"
+	"github.com/miekg/dns"
+)
 
 //TODO: Add function to test if resolver is working
 type Resolver struct {
@@ -24,7 +23,7 @@ type Resolver struct {
 
 	concurrency    int
 	server         string
-	domain 		   string
+	domain         string
 	stopChan       chan struct{}
 	statsdReporter *statsd.Client
 
@@ -45,7 +44,7 @@ func NewResolver(server string, domain string, concurrency int, flood bool, clie
 		concurrency:    concurrency,
 		statsdReporter: client,
 		stopChan:       exit,
-		domain:        domain,
+		domain:         domain,
 	}
 
 	go r.statsTimer(r.stopChan)
@@ -76,16 +75,21 @@ func (r *Resolver) resolve(exit <-chan struct{}) {
 				}
 				wg.Wait()
 			} else {
-				r.exchange()
+				err := r.exchange()
+				if err != nil {
+					fmt.Fprint(os.Stderr, err)
+				}
 			}
 		}
 	}
 }
 
-func (r *Resolver) waitExchange(wg *sync.WaitGroup) error {
-	r.exchange()
-	wg.Done()
-	return nil
+func (r *Resolver) waitExchange(wg *sync.WaitGroup) {
+	defer wg.Done()
+	err := r.exchange()
+	if err != nil {
+		fmt.Fprint(os.Stderr, err)
+	}
 }
 
 func (r *Resolver) exchange() error {
@@ -95,9 +99,9 @@ func (r *Resolver) exchange() error {
 		return err
 	}
 	defer udpConn.Close()
+
 	err = udpConn.WriteMsg(msg)
 	if err != nil {
-		fmt.Println(err)
 		return err
 	}
 
@@ -137,8 +141,8 @@ func (r *Resolver) submitStats() {
 	if err != nil {
 		fmt.Print(err)
 	}
-	r.statsdReporter.Count("npm.udp.testing.successful_requests", sent-errors, nil, 1)
-	r.statsdReporter.Count("npm.udp.testing.bytes_sent", bytesSent, nil, 1)
+	_ = r.statsdReporter.Count("npm.udp.testing.successful_requests", sent-errors, nil, 1)
+	_ = r.statsdReporter.Count("npm.udp.testing.bytes_sent", bytesSent, nil, 1)
 
 	// Update totals
 	atomic.AddInt64(&r.totalSent, sent)
