@@ -76,6 +76,7 @@ func (r *Resolver) RunResolver() {
 		go r.feed(timePerReq)
 	}
 
+	fmt.Printf("creating %d goroutines for sending\n", r.concurrency)
 	for i := 0; i < r.concurrency; i++ {
 		r.wg.Add(1)
 
