@@ -1,4 +1,4 @@
-# DNSStresss, the DNS stress test tool
+# DNSStress, the DNS stress test tool
 
 Simple Go program to stress test a DNS server.
 
@@ -8,18 +8,18 @@ It displays the number of queries made, along with the answer per second rate re
 
 First:
 
-    go get github.com/stb2132/dnsstresss
+    go get github.com/DataDog/dnsstress
 
 (Credit to original writer [Mickael Bergem](https://github.com/MickaelBergem/dnsstresss))
 
 Then:
 
-    $ dnsstresss -h
-    dnsstresss - dns stress tool
+    $ dnsstress -h
+    dnsstress - dns stress tool
 
     Send DNS requests as fast as possible to a given server and display the rate.
 
-    Usage: dnsstresss [option ...] targetdomain [targetdomain [...] ]
+    Usage: dnsstress [option ...] targetdomain [targetdomain [...] ]
     -concurrency int
                 Internal buffer (default 50)
     -d int      Update interval of the stats (in ms) (default 1000)
@@ -33,10 +33,4 @@ Then:
 
 For IPv6 resolvers, use brackets and quotes:
 
-    dnsstresss -r "[2001:4860:4860::8888]:53" -v google.com.
-
-Example:
-
-<p align="center">
-    <img src="https://mickaelbergem.github.io/dnsstresss/animation.svg" alt="Usage of DNSStresss, the DNS stress test tool">
-</p>
+    dnsstress -r "[2001:4860:4860::8888]:53" -v google.com.
