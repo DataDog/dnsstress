@@ -56,6 +56,11 @@ func main() {
 		os.Exit(1)
 	}
 
+	if concurrency < 1 {
+		flag.Usage()
+		os.Exit(1)
+	}
+
 	sdClient, err := statsd.New("127.0.0.1:8125")
 	if err != nil {
 		log.Fatal(err)

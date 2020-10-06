@@ -34,7 +34,6 @@ type Resolver struct {
 	server         string
 	domain         string
 	stopChan       chan struct{}
-	feedChan       chan struct{}
 	statsdReporter *statsd.Client
 
 	stopOnce sync.Once
@@ -49,7 +48,6 @@ func NewResolver(server string, domain string, client *statsd.Client, opts Resol
 		maxMessages:    opts.MaxMessages,
 		rps:            opts.RequestsPerSecond,
 		statsdReporter: client,
-		feedChan:       make(chan struct{}),
 		stopChan:       make(chan struct{}),
 		domain:         domain,
 	}
@@ -71,17 +69,21 @@ func (r *Resolver) RunResolver() {
 		fmt.Printf("sending %d messages\n", r.maxMessages)
 	}
 
-	if r.rps > 0 {
-		timePerReq := (1 * time.Second) / time.Duration(r.rps)
-		go r.feed(timePerReq)
-	}
-
 	fmt.Printf("creating %d goroutines for sending\n", r.concurrency)
+
+	rpsRemaining := r.rps
+	perThread := r.rps / r.concurrency
 	for i := 0; i < r.concurrency; i++ {
 		r.wg.Add(1)
 
 		if r.rps > 0 {
-			go r.consume()
+			rate := perThread
+			if i == r.concurrency-1 {
+				// use total remainder
+				rate = rpsRemaining
+			}
+			go r.consume(rate)
+			rpsRemaining -= rate
 		} else {
 			go r.resolve()
 		}
@@ -89,27 +91,20 @@ func (r *Resolver) RunResolver() {
 	r.wg.Wait()
 }
 
-func (r *Resolver) feed(dur time.Duration) {
-	ticker := time.NewTicker(dur)
+func (r *Resolver) consume(rps int) {
+	defer r.wg.Done()
+	ticker := time.NewTicker((1 * time.Second) / time.Duration(rps))
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-r.stopChan:
-			close(r.feedChan)
 			return
 		case <-ticker.C:
-			r.feedChan <- struct{}{}
-		}
-	}
-}
-
-func (r *Resolver) consume() {
-	defer r.wg.Done()
-	for range r.feedChan {
-		err := r.exchange()
-		if err != nil {
-			fmt.Fprint(os.Stderr, err)
+			err := r.exchange()
+			if err != nil {
+				fmt.Fprint(os.Stderr, err)
+			}
 		}
 	}
 }
