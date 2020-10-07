@@ -12,11 +12,30 @@ import (
 	"github.com/miekg/dns"
 )
 
+type ClockMode int
+
+const (
+	Common ClockMode = iota
+	Divided
+)
+
+func (c ClockMode) String() string {
+	switch c {
+	case Common:
+		return "common"
+	case Divided:
+		return "divided"
+	default:
+		return "unknown"
+	}
+}
+
 type ResolverOptions struct {
 	Concurrency       int
 	MaxMessages       int
 	RequestsPerSecond int
 	Protocol          string
+	ClockMode         ClockMode
 }
 
 //TODO: Add function to test if resolver is working
@@ -35,6 +54,7 @@ type Resolver struct {
 	server         string
 	domain         string
 	protocol       string
+	clockMode      ClockMode
 	stopChan       chan struct{}
 	statsdReporter *statsd.Client
 
@@ -53,6 +73,7 @@ func NewResolver(server string, domain string, client *statsd.Client, opts Resol
 		stopChan:       make(chan struct{}),
 		domain:         domain,
 		protocol:       opts.Protocol,
+		clockMode:      opts.ClockMode,
 	}
 
 	go r.statsTimer(r.stopChan)
@@ -73,20 +94,31 @@ func (r *Resolver) RunResolver() {
 	}
 
 	fmt.Printf("creating %d goroutines for sending\n", r.concurrency)
+	fmt.Printf("using protocol: %s\n", r.protocol)
+	fmt.Printf("using clock mode: %s\n", r.clockMode)
 
 	rpsRemaining := r.rps
 	perThread := r.rps / r.concurrency
+	var clock *time.Ticker
+	if r.rps > 0 && r.clockMode == Common {
+		clock = time.NewTicker((1 * time.Second) / time.Duration(r.rps))
+		defer clock.Stop()
+	}
+
 	for i := 0; i < r.concurrency; i++ {
 		r.wg.Add(1)
 
 		if r.rps > 0 {
-			rate := perThread
-			if i == r.concurrency-1 {
-				// use total remainder
-				rate = rpsRemaining
+			if r.clockMode == Divided {
+				rate := perThread
+				if i == r.concurrency-1 {
+					// use total remainder
+					rate = rpsRemaining
+				}
+				clock = time.NewTicker((1 * time.Second) / time.Duration(rate))
+				rpsRemaining -= rate
 			}
-			go r.consume(rate)
-			rpsRemaining -= rate
+			go r.consume(clock)
 		} else {
 			go r.resolve()
 		}
@@ -94,9 +126,8 @@ func (r *Resolver) RunResolver() {
 	r.wg.Wait()
 }
 
-func (r *Resolver) consume(rps int) {
+func (r *Resolver) consume(ticker *time.Ticker) {
 	defer r.wg.Done()
-	ticker := time.NewTicker((1 * time.Second) / time.Duration(rps))
 	defer ticker.Stop()
 
 	for {
@@ -125,7 +156,7 @@ func (r *Resolver) send() {
 	err := r.exchange()
 	if err != nil {
 		atomic.AddInt64(&r.errors, 1)
-		fmt.Fprint(os.Stderr, err)
+		fmt.Fprintf(os.Stderr, "%s\n", err)
 	}
 }
 
@@ -180,7 +211,7 @@ func (r *Resolver) submitStats() {
 	atomic.AddInt64(&r.totalErrors, errors)
 	atomic.AddInt64(&r.totalBytesSent, bytesSent)
 
-	fmt.Printf("%s sent: %6d total: %10d\n", t.Format(time.Stamp), sent, totalSent)
+	fmt.Printf("%s sent: %6d total: %10d errors: %6d\n", t.Format(time.Stamp), sent, totalSent, errors)
 
 	if totalSent > int64(r.maxMessages) {
 		r.maxOnce.Do(func() {

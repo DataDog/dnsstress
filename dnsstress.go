@@ -21,6 +21,7 @@ var (
 	runForever  bool
 	reqPerSec   int
 	protocol    string
+	clock       string
 )
 
 func init() {
@@ -34,6 +35,7 @@ func init() {
 		"Resolver to test against")
 	flag.StringVar(&protocol, "p", "udp",
 		"Protocol to use")
+	flag.StringVar(&clock, "clock", "div", "Clock mode for consumer threads (common, div)")
 	flag.BoolVar(&runForever, "inf", false,
 		"Run Forever")
 }
@@ -94,6 +96,16 @@ func main() {
 		log.Fatalf("unknown protocol %s", protocol)
 	}
 
+	var clockMode ClockMode
+	switch clock {
+	case "common":
+		clockMode = Common
+	case "div":
+		clockMode = Divided
+	default:
+		log.Fatalf("invalid clock mode %s", clock)
+	}
+
 	fmt.Printf("Target domains: %v.\n", targetDomains)
 
 	exit := make(chan struct{})
@@ -107,6 +119,7 @@ func main() {
 		MaxMessages:       maxMessages,
 		RequestsPerSecond: reqPerSec,
 		Protocol:          protocol,
+		ClockMode:         clockMode,
 	})
 
 	go func() {
