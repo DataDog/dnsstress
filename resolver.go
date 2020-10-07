@@ -171,9 +171,10 @@ func (r *Resolver) submitStats() {
 	t := time.Now()
 
 	// Submit stats
-	_ = r.statsdReporter.Count("npm.udp.testing.sent_packets", sent, nil, 1)
-	_ = r.statsdReporter.Count("npm.udp.testing.successful_requests", sent-errors, nil, 1)
-	_ = r.statsdReporter.Count("npm.udp.testing.bytes_sent", bytesSent, nil, 1)
+	tags := []string{"protocol:" + r.protocol}
+	_ = r.statsdReporter.Count("npm.testing.sent_packets", sent, tags, 1)
+	_ = r.statsdReporter.Count("npm.testing.successful_requests", sent-errors, tags, 1)
+	_ = r.statsdReporter.Count("npm.testing.bytes_sent", bytesSent, tags, 1)
 
 	// Update totals
 	totalSent := atomic.AddInt64(&r.totalSent, sent)
