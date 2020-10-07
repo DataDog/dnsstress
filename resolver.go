@@ -16,6 +16,7 @@ type ResolverOptions struct {
 	Concurrency       int
 	MaxMessages       int
 	RequestsPerSecond int
+	Protocol          string
 }
 
 //TODO: Add function to test if resolver is working
@@ -33,6 +34,7 @@ type Resolver struct {
 	rps            int
 	server         string
 	domain         string
+	protocol       string
 	stopChan       chan struct{}
 	statsdReporter *statsd.Client
 
@@ -50,6 +52,7 @@ func NewResolver(server string, domain string, client *statsd.Client, opts Resol
 		statsdReporter: client,
 		stopChan:       make(chan struct{}),
 		domain:         domain,
+		protocol:       opts.Protocol,
 	}
 
 	go r.statsTimer(r.stopChan)
@@ -101,10 +104,7 @@ func (r *Resolver) consume(rps int) {
 		case <-r.stopChan:
 			return
 		case <-ticker.C:
-			err := r.exchange()
-			if err != nil {
-				fmt.Fprint(os.Stderr, err)
-			}
+			r.send()
 		}
 	}
 }
@@ -116,23 +116,28 @@ func (r *Resolver) resolve() {
 		case <-r.stopChan:
 			return
 		default:
-			err := r.exchange()
-			if err != nil {
-				fmt.Fprint(os.Stderr, err)
-			}
+			r.send()
 		}
+	}
+}
+
+func (r *Resolver) send() {
+	err := r.exchange()
+	if err != nil {
+		atomic.AddInt64(&r.errors, 1)
+		fmt.Fprint(os.Stderr, err)
 	}
 }
 
 func (r *Resolver) exchange() error {
 	msg := new(dns.Msg).SetQuestion(r.domain, dns.TypeA)
-	udpConn, err := dns.Dial("udp", r.server)
+	conn, err := dns.Dial(r.protocol, r.server)
 	if err != nil {
 		return err
 	}
-	defer udpConn.Close()
+	defer conn.Close()
 
-	err = udpConn.WriteMsg(msg)
+	err = conn.WriteMsg(msg)
 	if err != nil {
 		return err
 	}
