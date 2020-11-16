@@ -20,6 +20,7 @@ var (
 	resolver    string
 	runForever  bool
 	reqPerSec   int
+	protocol    string
 )
 
 func init() {
@@ -31,6 +32,8 @@ func init() {
 		"Target request rate per second, defaults to unlimited")
 	flag.StringVar(&resolver, "r", "127.0.0.1:53",
 		"Resolver to test against")
+	flag.StringVar(&protocol, "p", "udp",
+		"Protocol to use")
 	flag.BoolVar(&runForever, "inf", false,
 		"Run Forever")
 }
@@ -83,6 +86,14 @@ func main() {
 		}
 	}
 
+	protocol = strings.ToLower(protocol)
+	switch protocol {
+	case "udp":
+	case "tcp":
+	default:
+		log.Fatalf("unknown protocol %s", protocol)
+	}
+
 	fmt.Printf("Target domains: %v.\n", targetDomains)
 
 	exit := make(chan struct{})
@@ -95,6 +106,7 @@ func main() {
 		Concurrency:       concurrency,
 		MaxMessages:       maxMessages,
 		RequestsPerSecond: reqPerSec,
+		Protocol:          protocol,
 	})
 
 	go func() {
